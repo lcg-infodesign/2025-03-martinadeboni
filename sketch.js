@@ -2,6 +2,7 @@ let data;
 let minLat, minLon, maxLat, maxLon;
 let filterSelect;
 let currentFilter = "Tutti";
+let myFont;
 
 function preload() {
   data = loadTable("assets/data.csv", "csv", "header");
@@ -12,16 +13,15 @@ function setup() {
   textAlign(LEFT, CENTER);
   textSize(16);
 
-  // calcolo min/max
-  let allLat = data.getColumn("latitude");
+  // Calcolo min/max
+  let allLat = data.getColumn("latitude").map(Number);
+  let allLon = data.getColumn("longitude").map(Number);
   minLat = min(allLat);
   maxLat = max(allLat);
-
-  let allLon = data.getColumn("longitude");
   minLon = min(allLon);
   maxLon = max(allLon);
 
-  // menu a tendina per filtrare per country
+  // Menu a tendina per filtrare per country
   filterSelect = createSelect();
   filterSelect.position(40, 100);
   filterSelect.option("Tutti");
@@ -30,32 +30,21 @@ function setup() {
   filterSelect.changed(() => currentFilter = filterSelect.value());
 }
 
-function drawTriangle(x, y, size) {
-  push();
-  translate(x, y);
-  triangle(
-    0, -size / 2,
-    -size / 2, size / 2,
-    size / 2, size / 2
-  );
-  pop();
-}
-
 function draw() {
-  background(20, 20, 30);
+  drawBackground();
 
-  // titolo
+  // Titolo
   fill(200, 220, 255);
   textSize(36);
-  text("Atlante dei Vulcani", 40, 50);
+  text(`Atlante dei Vulcani – ${currentFilter}`, 40, 50);
 
-  let hoverData = []; // array per salvare info hover
+  // Contatore visibile
+  let visibleCount = 0;
 
-  // disegno triangoli
+  let hoverData = [];
+
   for (let i = 0; i < data.getRowCount(); i++) {
     let row = data.getRow(i);
-
-    // filtro per country
     if (currentFilter !== "Tutti" && row.getString("country") !== currentFilter) continue;
 
     let lon = row.getNum("longitude");
@@ -64,69 +53,92 @@ function draw() {
     let value = row.getNum("value");
     let uncertainty = row.getNum("uncertainty");
 
-    let x = map(lon, minLon, maxLon, 50, width - 50);
-    let y = map(lat, minLat, maxLat, height - 100, 120);
+    let x = map(lon, minLon, maxLon, 80, width - 80);
+    let y = map(lat, minLat, maxLat, height - 120, 140);
 
+    // Colore basato su valore
+    let c = lerpColor(color(100, 200, 100), color(255, 100, 50), map(value, 0, 100, 0, 1));
     let size = 12;
+
+    // Hover
     let d = dist(mouseX, mouseY, x, y);
+    let hover = d < size;
+    let hoverSize = hover ? size + sin(frameCount * 0.2) * 2 + 2 : size;
 
-    // triangolo normale
-    fill(150, 200, 100);
+    fill(c);
     noStroke();
-    drawTriangle(x, y, size);
+    drawTriangle(x, y, hoverSize);
 
-    // salva info hover se mouse sopra
-    if (d < size) {
+    if (hover) {
       hoverData.push({
-        x: x,
-        y: y,
-        size: size,
-        country: country,
-        value: value,
-        uncertainty: uncertainty
+        x, y, size, country, value, uncertainty
       });
     }
+
+    visibleCount++;
   }
 
-  // disegna triangoli hover e testo in primo piano
-  hoverData.forEach(t => {
-    // triangolo ingrandito
-    fill(255, 100, 100);
-    stroke(255);
-    strokeWeight(2);
-    drawTriangle(t.x, t.y, t.size * 1.5);
-
-    // testo con sfondo
-    let tooltip = `${t.country}\nValue: ${t.value}\nUncertainty: ${t.uncertainty}`;
-    textSize(14);
-    let lines = tooltip.split("\n");
-    let padding = 6;
-    let w = 0;
-    lines.forEach(line => { if (textWidth(line) > w) w = textWidth(line); });
-    let h = lines.length * 18;
-
-    fill(0, 180); // sfondo semitrasparente
-    noStroke();
-    rect(t.x + 10, t.y - t.size - 10 - h / 2, w + padding * 2, h + padding * 2, 6);
-
-    fill(255); // testo sopra lo sfondo
-    lines.forEach((line, i) => {
-      text(line, t.x + 10 + padding, t.y - t.size - 10 - h / 2 + padding + i * 18);
-    });
-  });
+  // Tooltip e overlay
+  hoverData.forEach(t => drawTooltip(t));
 
   drawLegend();
+  drawGrid();
+  drawCoordinates();
+
+  // Contatore vulcani
+  fill(180, 220, 255);
+  textSize(16);
+  text(`${visibleCount} vulcani mostrati`, 40, height - 40);
 }
 
+//  COMPONENTI GRAFICI
 
-  drawLegend();
+function drawBackground() {
+  // Sfondo gradiente
+  for (let y = 0; y < height; y++) {
+    let inter = map(y, 0, height, 0, 1);
+    let c = lerpColor(color(10, 10, 30), color(40, 40, 70), inter);
+    stroke(c);
+    line(0, y, width, y);
+  }
+}
 
+function drawTriangle(x, y, size) {
+  push();
+  translate(x, y);
+  triangle(0, -size / 2, -size / 2, size / 2, size / 2, size / 2);
+  pop();
+}
+
+function drawTooltip(t) {
+  fill(255, 100, 100);
+  stroke(255);
+  strokeWeight(2);
+  drawTriangle(t.x, t.y, t.size * 1.5);
+
+  let tooltip = `${t.country}\nValue: ${t.value}\nUncertainty: ${t.uncertainty}`;
+  textSize(14);
+  let lines = tooltip.split("\n");
+  let padding = 6;
+  let w = 0;
+  lines.forEach(line => { if (textWidth(line) > w) w = textWidth(line); });
+  let h = lines.length * 18;
+
+  fill(0, 180);
+  noStroke();
+  rect(t.x + 10, t.y - t.size - 10 - h / 2, w + padding * 2, h + padding * 2, 6);
+
+  fill(255);
+  lines.forEach((line, i) => {
+    text(line, t.x + 10 + padding, t.y - t.size - 10 - h / 2 + padding + i * 18);
+  });
+}
 
 function drawLegend() {
   let legendX = width - 220;
   let legendY = 80;
   let legendW = 200;
-  let legendH = 100;
+  let legendH = 120;
 
   fill(0, 180);
   stroke(200, 220, 255);
@@ -149,4 +161,34 @@ function drawLegend() {
   drawTriangle(legendX + 25, legendY + 80, 12);
   fill(200, 220, 255);
   text("Hover: dettagli", legendX + 40, legendY + 80);
+
+  fill(200, 220, 255);
+  drawTriangle(legendX + 25, legendY + 105, 12);
+  fill(200, 220, 255);
+  text("Colore: intensità", legendX + 40, legendY + 105);
+}
+
+function drawGrid() {
+  stroke(255, 30);
+  for (let i = 0; i <= 5; i++) {
+    let x = map(i, 0, 5, 80, width - 80);
+    line(x, 140, x, height - 120);
+  }
+  for (let j = 0; j <= 5; j++) {
+    let y = map(j, 0, 5, 140, height - 120);
+    line(80, y, width - 80, y);
+  }
+}
+
+function drawCoordinates() {
+  fill(180);
+  noStroke();
+  textSize(14);
+  let lat = nf(map(mouseY, height - 120, 140, minLat, maxLat), 1, 2);
+  let lon = nf(map(mouseX, 80, width - 80, minLon, maxLon), 1, 2);
+  text(`Lat: ${lat}   Lon: ${lon}`, width - 220, height - 40);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
 }
